@@ -1,0 +1,13 @@
+# (예시 개념 코드) OpenAI API 연동 시 문단 분석 함수 변경 예시
+import openai
+
+def analyze_text_with_ai(text, api_key):
+    openai.api_key = api_key
+    prompt = f"다음 뉴스 문단을 읽고, 언론 비평가 입장에서 비판적 사고(과장, 편향, 근거 부족 등)가 필요한 이유를 친절한 경고 메시지로 작성해줘:\n\n'{text}'"
+    
+    # OpenAI API를 호출하여 실시간으로 문단의 문제점을 서술형으로 받아옴
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
