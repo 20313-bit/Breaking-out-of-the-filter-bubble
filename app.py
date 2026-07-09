@@ -1,105 +1,155 @@
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import re
 
-# 1. 페이지 기본 설정 (와이드 모드)
+# 1. 페이지 설정
 st.set_page_config(
-    page_title="디지털 뉴스 비판적 사고 가이드",
-    page_icon="📰",
+    page_title="실시간 뉴스 비판적 사고 가이드",
+    page_icon="🔍",
     layout="wide"
 )
 
-# 2. 앱 제목 및 설명
-st.title("🔍 뉴스 비판적 사고 훈련 도우미")
-st.markdown("""
-소셜 미디어나 디지털 뉴스를 읽을 때 무비판적으로 수용하지 않도록 돕는 앱입니다. 
-아래 기사를 읽으며 **오른쪽의 비판적 사고 알림창**을 확인해 보세요.
-""")
+# 2. 웹 크롤링 함수 (URL에서 뉴스 본문 추출)
+def fetch_news_content(url):
+    try:
+        # 봇(Bot)으로 오인받아 차단되는 것을 방지하기 위한 헤더 설정
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=5)
+        
+        if response.status_code != 200:
+            return None, None, f"뉴스를 불러오는데 실패했습니다. (에러 코드: {response.status_code})"
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 제목 추출 시도
+        title = "제목을 찾을 수 없음"
+        if soup.find('h1'):
+            title = soup.find('h1').get_text().strip()
+        elif soup.find('title'):
+            title = soup.find('title').get_text().strip()
+            
+        # 본문 문단 추출 (<p> 태그 기준)
+        paragraphs = []
+        p_tags = soup.find_all('p')
+        
+        for p in p_tags:
+            text = p.get_text().strip()
+            # 너무 짧은 문장이나 광고성 문구(Copyright 등)는 제외
+            if len(text) > 30 and not text.startswith("Copyright") and not text.startswith("▶"):
+                # 기자 이메일이나 무의미한 공백 제거 규칙 추가 가능
+                paragraphs.append(text)
+                
+        if not paragraphs:
+            return None, None, "기사 본문을 추출하지 못했습니다. 다른 뉴스 사이트 링크를 시도해 주세요."
+            
+        return title, paragraphs, None
+        
+    except Exception as e:
+        return None, None, f"오류가 발생했습니다: {str(e)}"
 
-st.write("---")
-
-# 3. 가상의 뉴스 데이터 구성 (실제 앱에서는 DB나 API 연동 가능)
-news_title = "[단독] 역대급 AI 혁명, 5년 내 인간 일자리 90% 완전히 대체한다?!"
-news_meta = "발행일: 2026.07.09 | 작성자: 미래경제연구팀"
-
-# 각 문단별 텍스트와 비판적 알림 메시지 매핑
-news_paragraphs = [
-    {
-        "id": 1,
-        "text": "최근 한 연구소의 발표에 따르면, 인공지능(AI) 기술의 급격한 발전으로 인해 향후 5년 안에 현재 인류가 가진 일자리의 90%가 문자 그대로 '완전히' 사라질 것이라는 충격적인 전망이 나왔다.",
-        "has_alert": True,
-        "alert_type": "warning",
-        "alert_title": "⚠️ 과장 및 공포 유발 (Sensationalism)",
-        "alert_msg": "'90% 완전히 대체'라는 극단적인 수치는 대중의 공포심을 자극하는 표현일 수 있습니다. 해당 수치를 도출한 연구소의 신뢰도와 구체적인 통계적 근거가 있는지 확인이 필요합니다."
-    },
-    {
-        "id": 2,
-        "text": "익명을 요구한 한 IT 업계 전문가는 '이 변화에 당장 대비하지 않는 기업과 개인은 무조건 도태될 것'이라며 '지금 당장 모든 자산을 AI 관련 분야로 전환해야 한다'고 강력히 경고했다.",
-        "has_alert": True,
-        "alert_type": "error",
-        "alert_title": "🚨 신뢰할 수 없는 출처 및 흑백논리",
-        "alert_msg": "'익명의 전문가'는 책임 소재가 불분명하여 신뢰성이 떨어집니다. 또한 '대비하지 않으면 무조건 도태된다'는 식의 이분법적 주장은 전형적인 논리적 오류입니다."
-    },
-    {
-        "id": 3,
-        "text": "한편, 기술 발전에 따른 부작용을 최소화하기 위해 정부 차원의 가이드라인 마련과 사회적 안전망 구축이 시급하다는 목소리도 점차 힘을 얻고 있다.",
-        "has_alert": False,
-        "alert_type": "info",
-        "alert_title": "✅ 비교적 객관적인 서술",
-        "alert_msg": "문제를 해결하기 위한 제도적 대안을 언급하는 부분으로, 비교적 균형 잡힌 시각을 보여줍니다."
-    }
-]
-
-# 4. 화면 레이아웃 분할 (좌측: 뉴스 본문 / 우측: 비판적 판단 알림창)
-col1, col2 = st.columns([5, 4], gap="large")
-
-with col1:
-    st.subheader("📰 뉴스 기사 본문")
+# 3. 알고리즘 기반 비판적 요소 분석 함수 (키워드 매칭)
+def analyze_text(text):
+    alerts = []
     
-    # 기사 헤더
-    st.error(f"### {news_title}")
-    st.caption(news_meta)
-    st.markdown("---")
-    
-    # 본문 출력 (알림이 필요한 문단은 배경색 하이라이트)
-    for p in news_paragraphs:
-        if p["has_alert"]:
-            # HTML을 이용해 노란색 배경으로 강조
-            st.markdown(
-                f"""
-                <div style="background-color: #fff3cd; padding: 15px; border-left: 5px solid #ffc107; border-radius: 4px; margin-bottom: 15px;">
-                    <strong>[문단 {p['id']}]</strong> {p['text']}
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                f"""
-                <div style="padding: 15px; margin-bottom: 15px; line-height: 1.6;">
-                    <strong>[문단 {p['id']}]</strong> {p['text']}
-                </div>
-                """, 
-                unsafe_allow_html=True
-            )
+    # 규칙 1: 익명 출처 검사
+    if any(w in text for w in ["익명", "관계자", "측근", "소식통", "한 전문가는"]):
+        alerts.append({
+            "type": "error",
+            "title": "🚨 출처 불분명 (익명 소식통)",
+            "msg": "'익명의 관계자'나 '소식통'을 인용한 보도는 책임 소재가 불분명합니다. 주장의 신뢰성을 뒷받침할 구체적인 공공 데이터나 공식 입장이 있는지 교차 검증이 필요합니다."
+        })
+        
+    # 규칙 2: 자극적/감정적 표현 검사
+    if any(w in text for w in ["충격", "경악", "발칵", "단독", "세계 최초", "발칵", "멘붕"]):
+        alerts.append({
+            "type": "warning",
+            "title": "⚠️ 자극적인 단어 (감정 유발 광고성 보도)",
+            "msg": "'충격', '단독' 등의 표현은 독자의 시선을 끌기 위한 클릭베이트(Clickbait)일 확률이 높습니다. 주관적인 감정 표현을 걷어내고 드라이한 사실(Fact)만 남겨두고 보세요."
+        })
+        
+    # 규칙 3: 극단적 서술 (흑백논리) 검사
+    if any(w in text for w in ["무조건", "절대", "완전히", "전부", "하나도"]):
+        alerts.append({
+            "type": "warning",
+            "title": "⚠️ 극단적 어휘 (복잡성 일반화)",
+            "msg": "세상사에는 다양한 인과관계가 얽혀 있습니다. '무조건', '완전히'와 같은 이분법적 단어는 사안을 지나치게 단순화하거나 과장했을 가능성이 큽니다."
+        })
+        
+    # 규칙 4: 추측성 보도 검사
+    if any(w in text for w in ["~카더라", "전망된다", "추측된다", "알려졌다", "예상된다"]):
+        alerts.append({
+            "type": "info",
+            "title": "ℹ️ 확정되지 않은 사실 (추측 보도)",
+            "msg": "이 문단은 확정된 사실이 아니라 미래 예측이나 소문을 다루고 있습니다. 공식 발표가 나기 전까지는 하나의 가설로만 받아들이는 것이 좋습니다."
+        })
+        
+    return alerts
 
-with col2:
-    st.subheader("💡 비판적 사고 가이드라인")
-    st.write("각 문단을 읽을 때 주의해야 할 포인트입니다.")
-    st.markdown("---")
-    
-    # 오른쪽 칸에 각 문단에 매칭되는 알림창 배치
-    for p in news_paragraphs:
-        if p["alert_type"] == "error":
-            st.error(f"**{p['alert_title']} (문단 {p['id']})**\n\n{p['alert_msg']}")
-        elif p["alert_type"] == "warning":
-            st.warning(f"**{p['alert_title']} (문단 {p['id']})**\n\n{p['alert_msg']}")
-        else:
-            st.info(f"**{p['alert_title']} (문단 {p['id']})**\n\n{p['alert_msg']}")
 
-# 5. 하단 팁 세션
-st.write("---")
-st.subheader("📌 디지털 뉴스를 볼 때 항상 스스로 던져야 할 질문")
-st.markdown("""
-* **출처가 명확한가?** (공신력 있는 기관, 실명 전문가 등)
-* **감정적인 단어를 사용하는가?** ('충격', '경악', '무조건' 등)
-* **반대 편의 의견도 공정하게 다루고 있는가?**
-""")
+# --- UI 레이아웃 구현 ---
+
+st.title("🔍 실시간 뉴스 비판적 사고 가이드 앱")
+st.markdown("원하는 뉴스 기사의 전체 링크(URL)를 입력하면 본문을 분석해 비판적 판단이 필요한 구간을 알려줍니다.")
+
+# URL 입력창
+target_url = st.text_input("뉴스 URL을 입력하세요:", placeholder="https://example-news.com/article/12345")
+
+if target_url:
+    with st.spinner("뉴스를 긁어와 분석하는 중입니다..."):
+        title, paragraphs, error = fetch_news_content(target_url)
+        
+    if error:
+        st.error(error)
+    else:
+        st.success("뉴스 분석 완료!")
+        st.markdown(f"### 📰 분석된 기사: {title}")
+        st.write("---")
+        
+        # 화면을 좌우로 분할 (좌: 뉴스 본문, 우: 알림 모아보기)
+        col1, col2 = st.columns([5, 4], gap="large")
+        
+        with col1:
+            st.subheader("📝 기사 본문 및 체크 포인트")
+            
+            for idx, text in enumerate(paragraphs, 1):
+                alerts = analyze_text(text)
+                
+                if alerts:
+                    # 경고가 있는 문단은 노란색 하이라이트 박스로 표시
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #fff3cd; padding: 12px; border-left: 5px solid #ffc107; border-radius: 4px; margin-bottom: 12px;">
+                            <strong>[문단 {idx}]</strong> {text}
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                else:
+                    # 경고가 없는 일반 문단
+                    st.markdown(
+                        f"<div style='padding: 12px; margin-bottom: 12px; line-height: 1.6;'><strong>[문단 {idx}]</strong> {text}</div>", 
+                        unsafe_allow_html=True
+                    )
+                    
+        with col2:
+            st.subheader("💡 비판적 사고 알림창")
+            st.write("각 문단에서 포착된 주의 사항입니다.")
+            st.markdown("---")
+            
+            has_any_alert = False
+            for idx, text in enumerate(paragraphs, 1):
+                alerts = analyze_text(text)
+                for alert in alerts:
+                    has_any_alert = True
+                    if alert["type"] == "error":
+                        st.error(f"**{alert['title']} (문단 {idx})**\n\n{alert['msg']}")
+                    elif alert["type"] == "warning":
+                        st.warning(f"**{alert['title']} (문단 {idx})**\n\n{alert['msg']}")
+                    else:
+                        st.info(f"**{alert['title']} (문단 {idx})**\n\n{alert['msg']}")
+                        
+            if not has_any_alert:
+                st.success("🎉 본문에서 뚜렷한 가짜뉴스 패턴이나 자극적인 표현이 발견되지 않았습니다! 비교적 객관적인 뉴스일 수 있습니다.")
